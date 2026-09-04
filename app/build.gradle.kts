@@ -4,6 +4,13 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val seamLogoResDir = layout.buildDirectory.dir("generated/res/seamLogo")
+val prepareSeamLogo by tasks.registering(Copy::class) {
+    from(rootProject.file("file_00000000187c81fa8aac74fc62b5c0cd.png"))
+    into(seamLogoResDir.map { it.dir("drawable") })
+    rename { "seam_logo.png" }
+}
+
 android {
     namespace = "ir.seam.photo"
     compileSdk = 35
@@ -12,9 +19,11 @@ android {
         applicationId = "ir.seam.photo"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
     }
+
+    sourceSets["main"].res.srcDir(seamLogoResDir)
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -28,6 +37,8 @@ android {
     buildFeatures { compose = true }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
 }
+
+tasks.named("preBuild") { dependsOn(prepareSeamLogo) }
 
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2025.01.00")
