@@ -7,6 +7,7 @@ plugins {
 android {
     namespace = "ir.seam.photo"
     compileSdk = 35
+
     defaultConfig {
         applicationId = "ir.seam.photo"
         minSdk = 26
@@ -14,6 +15,16 @@ android {
         versionCode = 1
         versionName = "1.0"
     }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
     buildFeatures { compose = true }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
 }
@@ -31,6 +42,6 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("io.coil-kt.coil3:coil-compose:3.0.4")
-    implementation("io.coil-kt.coil3:coil-network-okhttp:3.0.4")
+    implementation("io.coil-kt.coil-network-okhttp:3.0.4")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
