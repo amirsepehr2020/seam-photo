@@ -61,9 +61,7 @@ class MainActivity : ComponentActivity() {
 private fun SeamPhotoApp() {
     val context = LocalContext.current
     var granted by remember { mutableStateOf(hasMediaPermission(context)) }
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
-        granted = result.values.all { it }
-    }
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result -> granted = result.values.all { it } }
     LaunchedEffect(Unit) { if (!granted) launcher.launch(requiredPermissions()) }
     var dark by remember { mutableStateOf(true) }
     var screen by remember { mutableStateOf("photos") }
@@ -71,9 +69,7 @@ private fun SeamPhotoApp() {
     var media by remember { mutableStateOf<List<MediaItem>>(emptyList()) }
     var viewerItem by remember { mutableStateOf<MediaItem?>(null) }
 
-    LaunchedEffect(granted) {
-        if (granted) media = withContext(Dispatchers.IO) { loadMedia(context) }
-    }
+    LaunchedEffect(granted) { if (granted) media = withContext(Dispatchers.IO) { loadMedia(context) } }
 
     MaterialTheme(colorScheme = if (dark) darkColorScheme() else lightColorScheme()) {
         Surface(Modifier.fillMaxSize()) {
@@ -88,7 +84,7 @@ private fun SeamPhotoApp() {
                         }
                     } else {
                         val visible = selectedAlbum?.let { name -> media.filter { it.bucket == name } } ?: media
-                        GalleryScreen(visible, selectedAlbum ?: "All Photos", dark, { dark = !dark }, { screen = "albums" }, { viewerItem = it })
+                        GalleryScreen(visible, selectedAlbum ?: "All Photos", dark, { dark = !dark }, { screen = "albums" }, { selectedAlbum = null }, { viewerItem = it })
                     }
                     viewerItem?.let { item -> MediaViewer(item) { viewerItem = null } }
                 }
@@ -102,11 +98,8 @@ private fun PermissionView(onRequest: () -> Unit) {
     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(MaterialTheme.colorScheme.surface, MaterialTheme.colorScheme.surfaceVariant))), contentAlignment = Alignment.Center) {
         Card(shape = RoundedCornerShape(32.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = .92f)), modifier = Modifier.padding(24.dp)) {
             Column(Modifier.padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(Modifier.size(92.dp).clip(RoundedCornerShape(28.dp)).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.PhotoLibrary, null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary)
-                }
-                Spacer(Modifier.height(20.dp))
-                Text("SEAM Photo", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                Box(Modifier.size(92.dp).clip(RoundedCornerShape(28.dp)).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) { Icon(Icons.Default.PhotoLibrary, null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary) }
+                Spacer(Modifier.height(20.dp)); Text("SEAM Photo", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                 Text("گالری سریع و مینیمال شما", modifier = Modifier.padding(top = 6.dp, bottom = 22.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Button(onClick = onRequest, shape = RoundedCornerShape(16.dp)) { Text("اجازه دسترسی") }
             }
@@ -116,50 +109,36 @@ private fun PermissionView(onRequest: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun GalleryScreen(items: List<MediaItem>, title: String, dark: Boolean, toggleTheme: () -> Unit, onAlbums: () -> Unit, onOpen: (MediaItem) -> Unit) {
+private fun GalleryScreen(items: List<MediaItem>, title: String, dark: Boolean, toggleTheme: () -> Unit, onAlbums: () -> Unit, onAll: () -> Unit, onOpen: (MediaItem) -> Unit) {
     var columns by remember { mutableIntStateOf(3) }
     Column(Modifier.fillMaxSize()) {
-        TopAppBar(title = {
-            Column { Text(title, fontWeight = FontWeight.Bold); Text("${items.size} items", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        }, actions = {
-            GlassIconButton { onAlbums() ; Icon(Icons.Default.Album, "Albums") }
-            GlassIconButton { toggleTheme(); Icon(if (dark) Icons.Default.LightMode else Icons.Default.DarkMode, "Theme") }
+        TopAppBar(title = { Column { Text(title, fontWeight = FontWeight.Bold); Text("${items.size} items", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } }, actions = {
+            GlassIconButton(onClick = onAll) { Icon(Icons.Default.GridView, "All Photos") }
+            GlassIconButton(onClick = onAlbums) { Icon(Icons.Default.Album, "Albums") }
+            GlassIconButton(onClick = toggleTheme) { Icon(if (dark) Icons.Default.LightMode else Icons.Default.DarkMode, "Theme") }
         }, colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = .94f)))
-        Box(Modifier.fillMaxSize().pointerInput(Unit) {
-            detectTransformGestures { _, _, zoom, _ ->
-                if (zoom > 1.03f) columns = (columns - 1).coerceIn(2, 6)
-                else if (zoom < 0.97f) columns = (columns + 1).coerceIn(2, 6)
-            }
-        }) {
-            if (items.isEmpty()) EmptyGallery()
-            else LazyVerticalGrid(columns = GridCells.Fixed(columns), contentPadding = PaddingValues(5.dp), horizontalArrangement = Arrangement.spacedBy(5.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                items(items, key = { it.uri.toString() }) { MediaTile(it) { onOpen(it) } }
-            }
+        Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTransformGestures { _, _, zoom, _ -> if (zoom > 1.03f) columns = (columns - 1).coerceIn(2, 6) else if (zoom < 0.97f) columns = (columns + 1).coerceIn(2, 6) } }) {
+            if (items.isEmpty()) EmptyGallery() else LazyVerticalGrid(columns = GridCells.Fixed(columns), contentPadding = PaddingValues(5.dp), horizontalArrangement = Arrangement.spacedBy(5.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) { items(items, key = { it.uri.toString() }) { MediaTile(it) { onOpen(it) } } }
             GridHint(columns, Modifier.align(Alignment.BottomCenter).padding(bottom = 18.dp))
         }
     }
 }
 
 @Composable
-private fun GlassIconButton(content: @Composable RowScope.() -> Unit) {
-    Row(Modifier.padding(horizontal = 2.dp).size(42.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .72f)).clickable { }, horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically, content = content)
+private fun GlassIconButton(onClick: () -> Unit, content: @Composable RowScope.() -> Unit) {
+    Row(Modifier.padding(horizontal = 2.dp).size(42.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .72f)).clickable(onClick = onClick), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically, content = content)
 }
 
 @Composable
 private fun GridHint(columns: Int, modifier: Modifier = Modifier) {
     Row(modifier.shadow(10.dp, RoundedCornerShape(50)).clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.surface.copy(alpha = .9f)).border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .25f), RoundedCornerShape(50)).padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(Icons.Default.Tune, null, Modifier.size(15.dp), tint = MaterialTheme.colorScheme.primary)
-        Spacer(Modifier.width(7.dp)); Text("$columns ستون  •  pinch برای تغییر", style = MaterialTheme.typography.labelSmall)
+        Icon(Icons.Default.Tune, null, Modifier.size(15.dp), tint = MaterialTheme.colorScheme.primary); Spacer(Modifier.width(7.dp)); Text("$columns ستون  •  pinch برای تغییر", style = MaterialTheme.typography.labelSmall)
     }
 }
 
 @Composable
 private fun EmptyGallery() {
-    Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        Icon(Icons.Default.PhotoLibrary, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary.copy(alpha = .7f))
-        Spacer(Modifier.height(14.dp)); Text("گالری خالیه", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        Text("عکس یا ویدئویی برای نمایش پیدا نشد", color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
+    Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) { Icon(Icons.Default.PhotoLibrary, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary.copy(alpha = .7f)); Spacer(Modifier.height(14.dp)); Text("گالری خالیه", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold); Text("عکس یا ویدئویی برای نمایش پیدا نشد", color = MaterialTheme.colorScheme.onSurfaceVariant) }
 }
 
 @Composable
@@ -177,25 +156,15 @@ private fun MediaViewer(item: MediaItem, onDismiss: () -> Unit) {
     var controlsVisible by remember(item.uri) { mutableStateOf(true) }
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         if (item.isVideo) {
-            AndroidView(
-                factory = { ctx -> VideoView(ctx).apply {
-                    layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-                    setVideoURI(item.uri)
-                    setOnPreparedListener { mp -> mp.isLooping = true; start() }
-                } },
-                modifier = Modifier.fillMaxSize(),
-                update = { }
-            )
+            AndroidView(factory = { ctx -> VideoView(ctx).apply { layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT); setVideoURI(item.uri); setOnPreparedListener { mp -> mp.isLooping = true; start() } } }, modifier = Modifier.fillMaxSize(), update = {})
         } else {
             AsyncImage(model = ImageRequest.Builder(context).data(item.uri).build(), contentDescription = null, modifier = Modifier.fillMaxSize().clickable { controlsVisible = !controlsVisible }, contentScale = ContentScale.Fit)
         }
         if (controlsVisible) {
             Row(Modifier.fillMaxWidth().padding(18.dp).align(Alignment.TopCenter), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onDismiss, modifier = Modifier.size(46.dp).clip(CircleShape).background(Color.Black.copy(alpha = .52f))) { Icon(Icons.Default.Close, "Close", tint = Color.White) }
-                Spacer(Modifier.weight(1f))
-                Text(if (item.isVideo) "VIDEO" else "PHOTO", color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.Black.copy(alpha = .52f)).padding(horizontal = 14.dp, vertical = 8.dp))
+                Spacer(Modifier.weight(1f)); Text(if (item.isVideo) "VIDEO" else "PHOTO", color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.Black.copy(alpha = .52f)).padding(horizontal = 14.dp, vertical = 8.dp))
             }
-            if (item.isVideo) Text("برای پخش ویدئو از کنترل‌های سیستم استفاده کن", color = Color.White.copy(alpha = .75f), style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 20.dp))
         }
     }
 }
@@ -222,25 +191,13 @@ private fun AlbumsScreen(albums: List<Album>, dark: Boolean, toggleTheme: () -> 
     }
 }
 
-private fun hasMediaPermission(context: Context): Boolean = if (Build.VERSION.SDK_INT >= 33) {
-    ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED && ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_VIDEO) == PackageManager.PERMISSION_GRANTED
-} else ContextCompat.checkSelfPermission(context, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
-
+private fun hasMediaPermission(context: Context): Boolean = if (Build.VERSION.SDK_INT >= 33) ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED && ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_VIDEO) == PackageManager.PERMISSION_GRANTED else ContextCompat.checkSelfPermission(context, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
 private fun requiredPermissions(): Array<String> = if (Build.VERSION.SDK_INT >= 33) arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO) else arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
 
 private fun loadMedia(context: Context): List<MediaItem> {
-    val result = ArrayList<MediaItem>(512); val resolver = context.contentResolver
-    val imageUri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI; val videoUri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-    val bucketColumn = MediaStore.Images.ImageColumns.BUCKET_DISPLAY_NAME
-    val projection = arrayOf(MediaStore.MediaColumns._ID, bucketColumn, MediaStore.MediaColumns.DATE_ADDED)
-    resolver.query(imageUri, projection, null, null, "${MediaStore.MediaColumns.DATE_ADDED} DESC")?.use { c ->
-        val id = c.getColumnIndexOrThrow(MediaStore.MediaColumns._ID); val bucket = c.getColumnIndex(bucketColumn); val date = c.getColumnIndex(MediaStore.MediaColumns.DATE_ADDED)
-        while (c.moveToNext()) result += MediaItem(ContentUris.withAppendedId(imageUri, c.getLong(id)), false, c.getString(bucket) ?: "Pictures", c.getLong(date))
-    }
-    resolver.query(videoUri, projection, null, null, "${MediaStore.MediaColumns.DATE_ADDED} DESC")?.use { c ->
-        val id = c.getColumnIndexOrThrow(MediaStore.MediaColumns._ID); val bucket = c.getColumnIndex(bucketColumn); val date = c.getColumnIndex(MediaStore.MediaColumns.DATE_ADDED)
-        while (c.moveToNext()) result += MediaItem(ContentUris.withAppendedId(videoUri, c.getLong(id)), true, c.getString(bucket) ?: "Videos", c.getLong(date))
-    }
+    val result = ArrayList<MediaItem>(512); val resolver = context.contentResolver; val imageUri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI; val videoUri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI; val bucketColumn = MediaStore.Images.ImageColumns.BUCKET_DISPLAY_NAME; val projection = arrayOf(MediaStore.MediaColumns._ID, bucketColumn, MediaStore.MediaColumns.DATE_ADDED)
+    resolver.query(imageUri, projection, null, null, "${MediaStore.MediaColumns.DATE_ADDED} DESC")?.use { c -> val id = c.getColumnIndexOrThrow(MediaStore.MediaColumns._ID); val bucket = c.getColumnIndex(bucketColumn); val date = c.getColumnIndex(MediaStore.MediaColumns.DATE_ADDED); while (c.moveToNext()) result += MediaItem(ContentUris.withAppendedId(imageUri, c.getLong(id)), false, c.getString(bucket) ?: "Pictures", c.getLong(date)) }
+    resolver.query(videoUri, projection, null, null, "${MediaStore.MediaColumns.DATE_ADDED} DESC")?.use { c -> val id = c.getColumnIndexOrThrow(MediaStore.MediaColumns._ID); val bucket = c.getColumnIndex(bucketColumn); val date = c.getColumnIndex(MediaStore.MediaColumns.DATE_ADDED); while (c.moveToNext()) result += MediaItem(ContentUris.withAppendedId(videoUri, c.getLong(id)), true, c.getString(bucket) ?: "Videos", c.getLong(date)) }
     return result.sortedByDescending { it.date }
 }
 
