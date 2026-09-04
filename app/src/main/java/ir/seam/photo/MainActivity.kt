@@ -2,7 +2,9 @@ package ir.seam.photo
 
 import android.Manifest
 import android.content.ContentUris
+import android.content.Context
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
@@ -16,7 +18,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -63,11 +64,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
-import coil3.request.crossfade
 import coil3.video.VideoFrameDecoder
-import coil3.decode.VideoFrameDecoder
-import android.content.Context
-import android.net.Uri
 
 private data class MediaItem(val uri: Uri, val isVideo: Boolean, val bucket: String, val date: Long)
 private data class Album(val name: String, val count: Int, val cover: Uri?)
@@ -86,15 +83,13 @@ private fun SeamPhotoApp() {
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
         granted = result.values.any { it }
     }
-    LaunchedEffect(Unit) {
-        if (!granted) launcher.launch(requiredPermissions())
-    }
+    LaunchedEffect(Unit) { if (!granted) launcher.launch(requiredPermissions()) }
 
     var dark by remember { mutableStateOf(true) }
     var screen by remember { mutableStateOf("photos") }
     var selectedAlbum by remember { mutableStateOf<String?>(null) }
 
-    MaterialTheme(colorScheme = if (dark) darkScheme() else lightScheme()) {
+    MaterialTheme(colorScheme = if (dark) androidx.compose.material3.darkColorScheme() else androidx.compose.material3.lightColorScheme()) {
         Surface(Modifier.fillMaxSize()) {
             if (!granted) {
                 PermissionView { launcher.launch(requiredPermissions()) }
@@ -103,7 +98,7 @@ private fun SeamPhotoApp() {
                 val albums = remember(media) { buildAlbums(media) }
                 if (screen == "albums") {
                     AlbumsScreen(albums, dark, { dark = !dark }, onBack = { screen = "photos" }) { album ->
-                        selectedAlbum = album
+                        selectedAlbum = if (album == "All Photos") null else album
                         screen = "photos"
                     }
                 } else {
@@ -143,7 +138,7 @@ private fun GalleryScreen(items: List<MediaItem>, title: String, dark: Boolean, 
         Box(Modifier.fillMaxSize().pointerInput(Unit) {
             detectTransformGestures { _, _, zoom, _ ->
                 if (zoom > 1.03f) columns = (columns - 1).coerceIn(2, 6)
-                if (zoom < 0.97f) columns = (columns + 1).coerceIn(2, 6)
+                else if (zoom < 0.97f) columns = (columns + 1).coerceIn(2, 6)
             }
         }) {
             if (items.isEmpty()) {
@@ -154,9 +149,7 @@ private fun GalleryScreen(items: List<MediaItem>, title: String, dark: Boolean, 
                     contentPadding = PaddingValues(2.dp),
                     horizontalArrangement = Arrangement.spacedBy(2.dp),
                     verticalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    items(items, key = { it.uri.toString() }) { item -> MediaTile(item) }
-                }
+                ) { items(items, key = { it.uri.toString() }) { MediaTile(it) } }
             }
         }
     }
@@ -166,18 +159,12 @@ private fun GalleryScreen(items: List<MediaItem>, title: String, dark: Boolean, 
 private fun MediaTile(item: MediaItem) {
     Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(4.dp))) {
         AsyncImage(
-            model = ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
-                .data(item.uri)
-                .crossfade(false)
-                .decoderFactory(if (item.isVideo) VideoFrameDecoder.Factory() else null)
-                .build(),
+            model = ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current).data(item.uri).build(),
             contentDescription = null,
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Crop
         )
-        if (item.isVideo) {
-            Icon(Icons.Default.Movie, "Video", Modifier.align(Alignment.BottomEnd).padding(7.dp), tint = Color.White)
-        }
+        if (item.isVideo) Icon(Icons.Default.Movie, "Video", Modifier.align(Alignment.BottomEnd).padding(7.dp), tint = Color.White)
     }
 }
 
@@ -194,9 +181,7 @@ private fun AlbumsScreen(albums: List<Album>, dark: Boolean, toggleTheme: () -> 
             items(albums, key = { it.name }) { album ->
                 Card(onClick = { openAlbum(album.name) }, shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                     Column {
-                        Box(Modifier.fillMaxWidth().aspectRatio(1.15f)) {
-                            album.cover?.let { uri -> AsyncImage(uri, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
-                        }
+                        Box(Modifier.fillMaxWidth().aspectRatio(1.15f)) { album.cover?.let { AsyncImage(it, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) } }
                         Column(Modifier.padding(12.dp)) {
                             Text(album.name, style = MaterialTheme.typography.titleMedium, maxLines = 1)
                             Text("${album.count} items", style = MaterialTheme.typography.bodySmall)
@@ -219,19 +204,17 @@ private fun loadMedia(context: Context): List<MediaItem> {
     val resolver = context.contentResolver
     val imageUri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
     val videoUri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-    val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.BUCKET_DISPLAY_NAME, MediaStore.MediaColumns.DATE_ADDED)
+    val bucketColumn = MediaStore.Images.ImageColumns.BUCKET_DISPLAY_NAME
+    val projection = arrayOf(MediaStore.MediaColumns._ID, bucketColumn, MediaStore.MediaColumns.DATE_ADDED)
     resolver.query(imageUri, projection, null, null, "${MediaStore.MediaColumns.DATE_ADDED} DESC")?.use { c ->
-        val id = c.getColumnIndexOrThrow(MediaStore.MediaColumns._ID); val bucket = c.getColumnIndex(MediaStore.MediaColumns.BUCKET_DISPLAY_NAME); val date = c.getColumnIndex(MediaStore.MediaColumns.DATE_ADDED)
+        val id = c.getColumnIndexOrThrow(MediaStore.MediaColumns._ID); val bucket = c.getColumnIndex(bucketColumn); val date = c.getColumnIndex(MediaStore.MediaColumns.DATE_ADDED)
         while (c.moveToNext()) result += MediaItem(ContentUris.withAppendedId(imageUri, c.getLong(id)), false, c.getString(bucket) ?: "Pictures", c.getLong(date))
     }
     resolver.query(videoUri, projection, null, null, "${MediaStore.MediaColumns.DATE_ADDED} DESC")?.use { c ->
-        val id = c.getColumnIndexOrThrow(MediaStore.MediaColumns._ID); val bucket = c.getColumnIndex(MediaStore.MediaColumns.BUCKET_DISPLAY_NAME); val date = c.getColumnIndex(MediaStore.MediaColumns.DATE_ADDED)
+        val id = c.getColumnIndexOrThrow(MediaStore.MediaColumns._ID); val bucket = c.getColumnIndex(bucketColumn); val date = c.getColumnIndex(MediaStore.MediaColumns.DATE_ADDED)
         while (c.moveToNext()) result += MediaItem(ContentUris.withAppendedId(videoUri, c.getLong(id)), true, c.getString(bucket) ?: "Videos", c.getLong(date))
     }
     return result.sortedByDescending { it.date }
 }
 
 private fun buildAlbums(media: List<MediaItem>): List<Album> = listOf(Album("All Photos", media.size, media.firstOrNull()?.uri)) + media.groupBy { it.bucket }.map { (name, list) -> Album(name, list.size, list.firstOrNull()?.uri) }.sortedBy { it.name }
-
-@Composable private fun lightScheme() = androidx.compose.material3.lightColorScheme()
-@Composable private fun darkScheme() = androidx.compose.material3.darkColorScheme()
