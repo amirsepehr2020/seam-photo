@@ -7,7 +7,6 @@ plugins {
 android {
     namespace = "ir.seam.photo"
     compileSdk = 35
-
     defaultConfig {
         applicationId = "ir.seam.photo"
         minSdk = 26
@@ -15,7 +14,6 @@ android {
         versionCode = 1
         versionName = "1.0"
     }
-
     buildFeatures { compose = true }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
 }
@@ -25,6 +23,7 @@ dependencies {
     implementation(composeBom)
     androidTestImplementation(composeBom)
     implementation("androidx.activity:activity-compose:1.10.1")
+    implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
