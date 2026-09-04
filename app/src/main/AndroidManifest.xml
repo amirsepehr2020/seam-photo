@@ -2,7 +2,13 @@
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
-    <application android:theme="@style/Theme.SEAMPhoto" android:label="SEAM Photo" android:allowBackup="true" android:supportsRtl="true">
+    <application
+        android:theme="@style/Theme.SEAMPhoto"
+        android:label="SEAM Photo"
+        android:icon="@drawable/seam_logo"
+        android:roundIcon="@drawable/seam_logo"
+        android:allowBackup="true"
+        android:supportsRtl="true">
         <activity android:name=".MainActivity" android:screenOrientation="unspecified" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
