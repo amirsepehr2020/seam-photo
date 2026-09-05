@@ -5,6 +5,9 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -18,6 +21,27 @@ jobs:
         with:
           gradle-version: '8.11.1'
           cache-disabled: true
+      - name: Fix MainActivity compile errors
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/ir/seam/photo/MainActivity.kt')
+          s = p.read_text()
+          s = s.replace('else Gallery(shown,list.size,album!=null,dark,search,cols,selected,', 'else Gallery(shown,list.size,album!=null,dark,search,cols,selected,')
+          s = s.replace('},{remove(selected.map(Uri::parse))},{shareMany(c,selected.map(Uri::parse))})', '},{remove(selected.map(Uri::parse))},{shareMany(c,selected.map(Uri::parse))},{cols=it;prefs.edit().putInt("cols",it).apply()})')
+          s = s.replace('onClear:()->Unit,onDelete:()->Unit,onShare:()->Unit){', 'onClear:()->Unit,onDelete:()->Unit,onShare:()->Unit,onColsChange:(Int)->Unit){')
+          s = s.replace('cols=(cols-1).coerceIn(2,6)', 'onColsChange((cols-1).coerceIn(2,6))')
+          s = s.replace('cols=(cols+1).coerceIn(2,6)', 'onColsChange((cols+1).coerceIn(2,6))')
+          s = s.replace(' }}}}\n}\n\nprivate fun perms()', ' }}}\n}\n\nprivate fun perms()')
+          p.write_text(s)
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/ir/seam/photo/MainActivity.kt
+          if ! git diff --cached --quiet; then
+            git commit -m "Fix SEAM Photo compile errors"
+            git push
+          fi
       - name: Normalize Coil AsyncImage call
         run: sed -i 's/, transform = {})/)/' app/src/main/java/ir/seam/photo/MainActivity.kt
       - run: gradle assembleDebug --no-daemon
