@@ -11,6 +11,17 @@ val prepareSeamLogo by tasks.registering(Copy::class) {
     rename { "seam_logo.png" }
 }
 
+val seamFontResDir = layout.buildDirectory.dir("generated/res/seamFont")
+val prepareVazirmatn by tasks.registering {
+    val output = seamFontResDir.map { it.file("font/vazirmatn_bold.ttf") }
+    outputs.file(output)
+    doLast {
+        val target = output.get().asFile
+        target.parentFile.mkdirs()
+        java.net.URL("https://raw.githubusercontent.com/rastikerdar/vazirmatn/master/fonts/ttf/Vazirmatn-Bold.ttf").openStream().use { input -> target.outputStream().use { outputStream -> input.copyTo(outputStream) } }
+    }
+}
+
 android {
     namespace = "ir.seam.photo"
     compileSdk = 35
@@ -22,13 +33,17 @@ android {
         versionName = "1.3"
     }
     sourceSets["main"].res.srcDir(seamLogoResDir)
+    sourceSets["main"].res.srcDir(seamFontResDir)
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
 }
 
-tasks.named("preBuild") { dependsOn(prepareSeamLogo) }
+tasks.named("preBuild") {
+    dependsOn(prepareSeamLogo)
+    dependsOn(prepareVazirmatn)
+}
 
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2025.01.00")
