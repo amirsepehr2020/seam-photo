@@ -1,3 +1,5 @@
+import java.net.URL
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -18,7 +20,7 @@ val prepareVazirmatn by tasks.registering {
     doLast {
         val target = output.get().asFile
         target.parentFile.mkdirs()
-        java.net.URL("https://raw.githubusercontent.com/rastikerdar/vazirmatn/master/fonts/ttf/Vazirmatn-Bold.ttf").openStream().use { input -> target.outputStream().use { outputStream -> input.copyTo(outputStream) } }
+        URL("https://raw.githubusercontent.com/rastikerdar/vazirmatn/master/fonts/ttf/Vazirmatn-Bold.ttf").openStream().use { input -> target.outputStream().use { outputStream -> input.copyTo(outputStream) } }
     }
 }
 
