@@ -62,14 +62,13 @@ private enum class Sort{NEW,OLD,NAME}
 class MainActivity:ComponentActivity(){override fun onCreate(b:Bundle?){super.onCreate(b);setContent{App()}}}
 
 @Composable private fun App(){
- val c=LocalContext.current
+ val c=LocalContext.current;val prefs=c.getSharedPreferences("seam",Context.MODE_PRIVATE)
  var ok by remember{mutableStateOf(hasPermission(c))}
  val perm=rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()){ok=hasPermission(c)}
  LaunchedEffect(Unit){if(!ok)perm.launch(perms())}
- var dark by remember{mutableStateOf(c.getPreferences(0).getBoolean("dark",true))}
- var list by remember{mutableStateOf(emptyList<M>())};var reload by remember{mutableIntStateOf(0)}
+ var dark by remember{mutableStateOf(prefs.getBoolean("dark",true))};var list by remember{mutableStateOf(emptyList<M>())};var reload by remember{mutableIntStateOf(0)}
  var albums by remember{mutableStateOf(false)};var album by remember{mutableStateOf<String?>(null)};var viewer by remember{mutableIntStateOf(-1)}
- var search by remember{mutableStateOf("")};var sort by remember{mutableStateOf(Sort.NEW)};var cols by remember{mutableIntStateOf(c.getPreferences(0).getInt("cols",3))};var settings by remember{mutableStateOf(false)};var selected by remember{mutableStateOf(setOf<String>())}
+ var search by remember{mutableStateOf("")};var sort by remember{mutableStateOf(Sort.NEW)};var cols by remember{mutableIntStateOf(prefs.getInt("cols",3))};var settings by remember{mutableStateOf(false)};var selected by remember{mutableStateOf(setOf<String>())}
  LaunchedEffect(ok,reload){if(ok)list=withContext(Dispatchers.IO){load(c)}}
  val delete=rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()){reload++;selected=emptySet()}
  fun remove(us:List<Uri>){if(us.isEmpty())return;if(Build.VERSION.SDK_INT>=30){val p=MediaStore.createDeleteRequest(c.contentResolver,us);delete.launch(IntentSenderRequest.Builder(p.intentSender).build())}else{us.forEach{c.contentResolver.delete(it,null,null)};reload++}}
@@ -77,12 +76,12 @@ class MainActivity:ComponentActivity(){override fun onCreate(b:Bundle?){super.on
   val base=when(album){"Favorites"->list.filter{it.fav};"Videos"->list.filter{it.video};"Screenshots"->list.filter{it.bucket.contains("screenshot",true)};"Camera"->list.filter{it.bucket.contains("camera",true)};else->album?.let{n->list.filter{it.bucket==n}}?:list}
   val shown=base.filter{search.isBlank()||it.name.contains(search,true)||it.bucket.contains(search,true)}.let{when(sort){Sort.NEW->it.sortedByDescending{m->m.date};Sort.OLD->it.sortedBy{m->m.date};Sort.NAME->it.sortedBy{m->m.name.lowercase()}}}
   Box(Modifier.fillMaxSize()){
-   if(albums)AlbumPage(makeAlbums(list),dark,{dark=!dark;c.getPreferences(0).edit().putBoolean("dark",dark).apply()},{albums=false}){n->album=if(n=="All Photos")null else n;albums=false}
-   else Gallery(shown,album?:"All Photos",dark,search,cols,selected,{search=it},{dark=!dark;c.getPreferences(0).edit().putBoolean("dark",dark).apply()},{albums=true},{settings=true},{viewer=list.indexOfFirst{m->m.uri==it.uri}},{u->selected=if(u.toString()in selected)selected-u.toString()else selected+u.toString()},{selected=emptySet()},{remove(selected.map(Uri::parse))},{shareMany(c,selected.map(Uri::parse))})
+   if(albums)AlbumPage(makeAlbums(list),dark,{dark=!dark;prefs.edit().putBoolean("dark",dark).apply()},{albums=false}){n->album=if(n=="All Photos")null else n;albums=false}
+   else Gallery(shown,album?:"All Photos",dark,search,cols,selected,{search=it},{dark=!dark;prefs.edit().putBoolean("dark",dark).apply()},{albums=true},{settings=true},{viewer=list.indexOfFirst{m->m.uri==it.uri}},{u->selected=if(u.toString()in selected)selected-u.toString()else selected+u.toString()},{selected=emptySet()},{remove(selected.map(Uri::parse))},{shareMany(c,selected.map(Uri::parse))})
    if(viewer>=0&&list.isNotEmpty())Viewer(list,viewer,{viewer=-1},{m->remove(listOf(m.uri));viewer=-1},{m,f->fav(c,m,f);reload++})
   }
-  if(settings)Settings(cols,sort,{cols=it;c.getPreferences(0).edit().putInt("cols",it).apply()},{sort=it},{settings=false})
- }}}}
+  if(settings)Settings(cols,sort,{cols=it;prefs.edit().putInt("cols",it).apply()},{sort=it},{settings=false})
+ }}}
 }
 
 private fun perms():Array<String> = if(Build.VERSION.SDK_INT>=34) arrayOf(Manifest.permission.READ_MEDIA_IMAGES,Manifest.permission.READ_MEDIA_VIDEO,Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) else if(Build.VERSION.SDK_INT>=33) arrayOf(Manifest.permission.READ_MEDIA_IMAGES,Manifest.permission.READ_MEDIA_VIDEO) else arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
