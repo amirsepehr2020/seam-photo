@@ -133,7 +133,7 @@ class MainActivity : ComponentActivity() { override fun onCreate(savedInstanceSt
                 IconButton(onClick = onDismiss, modifier = Modifier.size(46.dp).clip(CircleShape).background(Color.Black.copy(alpha = .55f))) { Icon(Icons.Default.Close, "Close", tint = Color.White) }
                 Spacer(Modifier.weight(1f)); Text("${index + 1} / ${items.size}", color = Color.White, modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.Black.copy(alpha = .55f)).padding(horizontal = 13.dp, vertical = 8.dp))
             }
-            Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(18.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+            Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 18.dp, bottom = if (item.isVideo) 112.dp else 18.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                 ViewerButton(Icons.Default.Share, "اشتراک", { shareMedia(context, item.uri) })
                 ViewerButton(if (favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, "موردعلاقه", { favorite = !favorite; onFavorite(item, favorite) })
                 ViewerButton(Icons.Default.Info, "اطلاعات", { showInfo = true })
