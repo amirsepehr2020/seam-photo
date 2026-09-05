@@ -88,12 +88,12 @@ class MainActivity:ComponentActivity(){override fun onCreate(b:Bundle?){super.on
   CompositionLocalProvider(LocalTextStyle provides LocalTextStyle.current.copy(fontFamily=VazirBold,fontWeight=FontWeight.Bold)){
    Box(Modifier.fillMaxSize()){
     if(albums)AlbumPage(makeAlbums(list),dark,{dark=!dark;prefs.edit().putBoolean("dark",dark).apply()},{albums=false}){n->album=if(n=="All Photos")null else n;albums=false}
-    else Gallery(shown,list.size,album!=null,dark,search,cols,selected,{search=it},{dark=!dark;prefs.edit().putBoolean("dark",dark).apply()},{albums=true},{settings=true},{viewer=list.indexOfFirst{m->m.uri==it.uri}},{u->selected=if(u.toString()in selected)selected-u.toString()else selected+u.toString()},{selected=emptySet()},{remove(selected.map(Uri::parse))},{shareMany(c,selected.map(Uri::parse))})
+    else Gallery(shown,list.size,album!=null,dark,search,cols,selected,{search=it},{dark=!dark;prefs.edit().putBoolean("dark",dark).apply()},{albums=true},{settings=true},{viewer=list.indexOfFirst{m->m.uri==it.uri}},{u->selected=if(u.toString()in selected)selected-u.toString()else selected+u.toString()},{selected=emptySet()},{remove(selected.map(Uri::parse))},{shareMany(c,selected.map(Uri::parse))},{cols=it;prefs.edit().putInt("cols",it).apply()})
     if(viewer>=0&&list.isNotEmpty())Viewer(list,viewer,{viewer=-1},{m->remove(listOf(m.uri));viewer=-1},{m,f->fav(c,m,f);reload++})
    }
    if(settings)Settings(cols,sort,{cols=it;prefs.edit().putInt("cols",it).apply()},{sort=it},{settings=false})
   }
- }}}}
+ }}}
 }
 
 private fun perms():Array<String> = if(Build.VERSION.SDK_INT>=34) arrayOf(Manifest.permission.READ_MEDIA_IMAGES,Manifest.permission.READ_MEDIA_VIDEO,Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) else if(Build.VERSION.SDK_INT>=33) arrayOf(Manifest.permission.READ_MEDIA_IMAGES,Manifest.permission.READ_MEDIA_VIDEO) else arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
@@ -102,7 +102,7 @@ private fun hasPermission(c:Context)=if(Build.VERSION.SDK_INT>=34)listOf(Manifes
 @Composable private fun Permission(on:()->Unit)=Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(MaterialTheme.colorScheme.surface,MaterialTheme.colorScheme.surfaceVariant))),contentAlignment=Alignment.Center){Card(shape=RoundedCornerShape(32.dp),modifier=Modifier.padding(24.dp)){Column(Modifier.padding(30.dp),horizontalAlignment=Alignment.CenterHorizontally){Icon(Icons.Default.PhotoLibrary,null,Modifier.size(62.dp),tint=MaterialTheme.colorScheme.primary);Text("SEAM Photo",style=MaterialTheme.typography.headlineMedium);Text("گالری سریع و مدرن",color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.padding(10.dp));Button(onClick=on){Text("اجازه دسترسی")}}}}
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable private fun Gallery(xs:List<M>,total:Int,inAlbum:Boolean,dark:Boolean,search:String,cols:Int,sel:Set<String>,onSearch:(String)->Unit,onTheme:()->Unit,onAlbums:()->Unit,onSettings:()->Unit,onOpen:(M)->Unit,onSelect:(Uri)->Unit,onClear:()->Unit,onDelete:()->Unit,onShare:()->Unit){
+@Composable private fun Gallery(xs:List<M>,total:Int,inAlbum:Boolean,dark:Boolean,search:String,cols:Int,sel:Set<String>,onSearch:(String)->Unit,onTheme:()->Unit,onAlbums:()->Unit,onSettings:()->Unit,onOpen:(M)->Unit,onSelect:(Uri)->Unit,onClear:()->Unit,onDelete:()->Unit,onShare:()->Unit,onColsChange:(Int)->Unit){
  var searching by remember{mutableStateOf(false)};var feed by remember{mutableStateOf(Feed.ALL)}
  val filtered=remember(xs,feed){when(feed){Feed.LATEST->xs.sortedByDescending{it.date};Feed.FAVORITES->xs.filter{it.fav};Feed.ALL->xs;Feed.VIDEOS->xs.filter{it.video};Feed.PHOTOS->xs.filterNot{it.video}}}
  val shown=filtered.filter{search.isBlank()||it.name.contains(search,true)||it.bucket.contains(search,true)}
@@ -111,7 +111,7 @@ private fun hasPermission(c:Context)=if(Build.VERSION.SDK_INT>=34)listOf(Manifes
   else if(searching)TopAppBar(title={OutlinedTextField(value=search,onValueChange=onSearch,modifier=Modifier.fillMaxWidth().padding(end=8.dp),singleLine=true,placeholder={Text("جستجو…")},leadingIcon={Icon(Icons.Default.Search,null)},trailingIcon={IconButton(onClick={searching=false;onSearch("")}){Icon(Icons.Default.Close,null)}},shape=RoundedCornerShape(18.dp))})
   else TopAppBar(title={Column{Text("SEAM Photo");Text("$total مورد",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}},actions={IconButton({searching=true}){Icon(Icons.Default.Search,"جستجو")};IconButton(onAlbums){Icon(Icons.Default.Album,"آلبوم")};IconButton(onSettings){Icon(Icons.Default.Tune,"تنظیمات")};IconButton(onTheme){Icon(if(dark)Icons.Default.LightMode else Icons.Default.DarkMode,"تم")}})
   Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal=10.dp,vertical=4.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)){FeedChip("تازه‌ها",feed==Feed.LATEST){feed=Feed.LATEST};FeedChip("مورد علاقه‌ها",feed==Feed.FAVORITES){feed=Feed.FAVORITES};FeedChip("همه",feed==Feed.ALL){feed=Feed.ALL};FeedChip("ویدیوها",feed==Feed.VIDEOS){feed=Feed.VIDEOS};FeedChip("عکس‌ها",feed==Feed.PHOTOS){feed=Feed.PHOTOS}}
-  Box(Modifier.fillMaxSize().pointerInput(Unit){detectTransformGestures{_,_,zoom,_->if(zoom>1.03f)cols=(cols-1).coerceIn(2,6)else if(zoom<.97f)cols=(cols+1).coerceIn(2,6)}}){
+  Box(Modifier.fillMaxSize().pointerInput(Unit){detectTransformGestures{_,_,zoom,_->if(zoom>1.03f)onColsChange((cols-1).coerceIn(2,6))else if(zoom<.97f)onColsChange((cols+1).coerceIn(2,6))}}){
    if(shown.isEmpty())Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center){Column(horizontalAlignment=Alignment.CenterHorizontally){Icon(Icons.Default.PhotoLibrary,null,Modifier.size(60.dp),tint=MaterialTheme.colorScheme.primary);Text("چیزی برای نمایش نیست")}}
    else LazyVerticalGrid(GridCells.Fixed(cols),contentPadding=PaddingValues(5.dp),horizontalArrangement=Arrangement.spacedBy(5.dp),verticalArrangement=Arrangement.spacedBy(5.dp)){items(shown,key={it.uri.toString()}){Tile(it,it.uri.toString()in sel,onOpen,onSelect)}}
   }
