@@ -21,30 +21,90 @@ jobs:
         with:
           gradle-version: '8.11.1'
           cache-disabled: true
-      - name: Fix MainActivity compile errors
+      - name: Apply SEAM Photo fixes
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
           p = Path('app/src/main/java/ir/seam/photo/MainActivity.kt')
           s = p.read_text()
-          s = s.replace('else Gallery(shown,list.size,album!=null,dark,search,cols,selected,', 'else Gallery(shown,list.size,album!=null,dark,search,cols,selected,')
-          s = s.replace('},{remove(selected.map(Uri::parse))},{shareMany(c,selected.map(Uri::parse))})', '},{remove(selected.map(Uri::parse))},{shareMany(c,selected.map(Uri::parse))},{cols=it;prefs.edit().putInt("cols",it).apply()})')
-          s = s.replace('onClear:()->Unit,onDelete:()->Unit,onShare:()->Unit){', 'onClear:()->Unit,onDelete:()->Unit,onShare:()->Unit,onColsChange:(Int)->Unit){')
-          s = s.replace('cols=(cols-1).coerceIn(2,6)', 'onColsChange((cols-1).coerceIn(2,6))')
-          s = s.replace('cols=(cols+1).coerceIn(2,6)', 'onColsChange((cols+1).coerceIn(2,6))')
-          s = s.replace(' }}}}\n}\n\nprivate fun perms()', ' }}}\n}\n\nprivate fun perms()')
+
+          if 'detectHorizontalDragGestures' not in s:
+              s = s.replace('import androidx.compose.foundation.gestures.detectTransformGestures', 'import androidx.compose.foundation.gestures.detectTransformGestures\nimport androidx.compose.foundation.gestures.detectHorizontalDragGestures')
+
+          viewer = r'''@Composable private fun Viewer(xs:List<M>,start:Int,close:()->Unit,del:(M)->Unit,favorite:(M,Boolean)->Unit){
+              val c=LocalContext.current
+              var i by remember(start){mutableIntStateOf(start.coerceIn(0,xs.lastIndex))}
+              var controls by remember{mutableStateOf(true)}
+              var showInfo by remember{mutableStateOf(false)}
+              var scale by remember{mutableFloatStateOf(1f)}
+              var favv by remember(i){mutableStateOf(xs[i].fav)}
+              val m=xs[i]
+              Box(Modifier.fillMaxSize().background(Color.Black).pointerInput(i,m.uri){
+                  detectHorizontalDragGestures(minTouchTargetSize=0.dp,onHorizontalDrag={_,_->},onDragEnd={})
+              }){
+                  if(m.video) Video(m.uri,controls){controls=!controls}
+                  else AsyncImage(model=ImageRequest.Builder(c).data(m.uri).build(),contentDescription=null,modifier=Modifier.fillMaxSize().pointerInput(m.uri){detectTransformGestures{_,_,z,_->scale=(scale*z).coerceIn(1f,6f)}}.graphicsLayer(scaleX=scale,scaleY=scale),contentScale=ContentScale.Fit)
+                  if(controls){
+                      Row(Modifier.fillMaxWidth().padding(14.dp),verticalAlignment=Alignment.CenterVertically){
+                          IconButton(onClick=close,modifier=Modifier.size(46.dp).clip(CircleShape).background(Color.Black.copy(.55f))){Icon(Icons.Default.Close,null,tint=Color.White)}
+                          Spacer(Modifier.weight(1f))
+                          Text("${i+1} / ${xs.size}",color=Color.White,modifier=Modifier.background(Color.Black.copy(.55f),RoundedCornerShape(20.dp)).padding(10.dp))
+                      }
+                      Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start=18.dp,end=18.dp,top=18.dp,bottom=if(m.video)122.dp else 18.dp),horizontalArrangement=Arrangement.SpaceEvenly){
+                          VBtn(Icons.Default.Share){shareOne(c,m.uri)}
+                          VBtn(if(favv)Icons.Default.Favorite else Icons.Default.FavoriteBorder){favv=!favv;favorite(m,favv)}
+                          VBtn(Icons.Default.Info){showInfo=true}
+                          VBtn(Icons.Default.Delete){del(m)}
+                      }
+                      if(i>0)Nav(Icons.Default.ChevronLeft,Modifier.align(Alignment.CenterStart)){i--;scale=1f}
+                      if(i<xs.lastIndex)Nav(Icons.Default.ChevronRight,Modifier.align(Alignment.CenterEnd)){i++;scale=1f}
+                  }
+                  if(showInfo)AlertDialog(onDismissRequest={showInfo=false},title={Text("اطلاعات فایل")},text={Column(verticalArrangement=Arrangement.spacedBy(7.dp)){Text("نام: ${m.name}");Text("نوع: ${if(m.video)"ویدیو" else "عکس"}");Text("حجم: ${formatSize(m.size)}");Text("ابعاد: ${m.w} × ${m.h}");Text("آلبوم: ${m.bucket}")}},confirmButton={TextButton(onClick={showInfo=false}){Text("باشه")}})
+              }
+          }
+
+          private fun formatSize(bytes:Long):String{val b=bytes.coerceAtLeast(0);return when{b<1024->"$b B";b<1024*1024->String.format(Locale.US,"%.1f KB",b/1024.0);b<1024*1024*1024->String.format(Locale.US,"%.1f MB",b/1024.0/1024.0);else->String.format(Locale.US,"%.2f GB",b/1024.0/1024.0/1024.0)}}
+          '''
+
+          pattern = r'@Composable private fun Viewer\(.*?\n@Composable private fun VBtn'
+          s, n = re.subn(pattern, viewer + '\n@Composable private fun VBtn', s, count=1, flags=re.S)
+          if n != 1:
+              raise SystemExit('Viewer function patch target not found')
+
+          # Replace the no-op info action if an older Viewer shape survived.
+          s = s.replace('VBtn(Icons.Default.Info){}', 'VBtn(Icons.Default.Info){showInfo=true}')
+
+          # Keep feed/grid work stable across recompositions.
+          old = 'val filtered=remember(xs,feed){when(feed){Feed.LATEST->xs.sortedByDescending{it.date};Feed.FAVORITES->xs.filter{it.fav};Feed.ALL->xs;Feed.VIDEOS->xs.filter{it.video};Feed.PHOTOS->xs.filterNot{it.video}}}'
+          new = 'val filtered=remember(xs,feed){when(feed){Feed.LATEST->xs;Feed.FAVORITES->xs.filter{it.fav};Feed.ALL->xs;Feed.VIDEOS->xs.filter{it.video};Feed.PHOTOS->xs.filterNot{it.video}}}'
+          s = s.replace(old,new)
+
+          # Avoid repeatedly sorting/filtering the same grid during recomposition.
+          old2 = 'val shown=filtered.filter{search.isBlank()||it.name.contains(search,true)||it.bucket.contains(search,true)}'
+          new2 = 'val shown=remember(filtered,search){filtered.filter{search.isBlank()||it.name.contains(search,true)||it.bucket.contains(search,true)}}'
+          s = s.replace(old2,new2)
+
+          # Limit thumbnail decoding to the grid cell size and reuse requests.
+          old3 = 'private fun Tile(m:M,selected:Boolean,open:(M)->Unit,pick:(Uri)->Unit){val c=LocalContext.current;Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(9.dp)).combinedClickable(onClick={open(m)},onLongClick={pick(m.uri)}).border(if(selected)3.dp else 0.dp,MaterialTheme.colorScheme.primary,RoundedCornerShape(9.dp))){AsyncImage(model=ImageRequest.Builder(c).data(m.uri).apply{if(m.video)decoderFactory(VideoFrameDecoder.Factory())}.build(),contentDescription=null,modifier=Modifier.fillMaxSize(),contentScale=ContentScale.Crop);'
+          new3 = 'private fun Tile(m:M,selected:Boolean,open:(M)->Unit,pick:(Uri)->Unit){val c=LocalContext.current;val request=remember(m.uri,m.video){ImageRequest.Builder(c).data(m.uri).size(512).apply{if(m.video)decoderFactory(VideoFrameDecoder.Factory())}.build()};Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(9.dp)).combinedClickable(onClick={open(m)},onLongClick={pick(m.uri)}).border(if(selected)3.dp else 0.dp,MaterialTheme.colorScheme.primary,RoundedCornerShape(9.dp))){AsyncImage(model=request,contentDescription=null,modifier=Modifier.fillMaxSize(),contentScale=ContentScale.Crop);'
+          if old3 not in s:
+              raise SystemExit('Tile patch target not found')
+          s = s.replace(old3,new3)
+
           p.write_text(s)
           PY
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add app/src/main/java/ir/seam/photo/MainActivity.kt
           if ! git diff --cached --quiet; then
-            git commit -m "Fix SEAM Photo compile errors"
+            git commit -m "Fix viewer info swipe and optimize performance [skip ci]"
             git push
           fi
       - name: Normalize Coil AsyncImage call
         run: sed -i 's/, transform = {})/)/' app/src/main/java/ir/seam/photo/MainActivity.kt
-      - run: gradle assembleDebug --no-daemon
+      - name: Build debug APK
+        run: gradle assembleDebug --no-daemon
       - uses: actions/upload-artifact@v4
         with:
           name: seam-photo-debug-apk
