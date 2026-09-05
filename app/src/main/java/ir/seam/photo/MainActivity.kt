@@ -10,8 +10,6 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import android.view.ViewGroup
-import android.widget.MediaController
-import android.widget.VideoView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -45,10 +43,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.media3.common.Player
+import androidx.media3.common.MediaItem as PlayerMediaItem
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.video.VideoFrameDecoder
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 private data class MediaItem(val uri: Uri, val isVideo: Boolean, val bucket: String, val date: Long, val name: String, val size: Long)
@@ -114,13 +117,17 @@ class MainActivity : ComponentActivity() { override fun onCreate(savedInstanceSt
     var offsetY by remember { mutableFloatStateOf(0f) }
     var favorite by remember { mutableStateOf(false) }
     var showInfo by remember { mutableStateOf(false) }
-    var videoView by remember { mutableStateOf<VideoView?>(null) }
     if (items.isEmpty()) return
     val item = items.getOrNull(index) ?: return
-    Box(Modifier.fillMaxSize().background(Color.Black).pointerInput(index) { detectHorizontalDragGestures(onDragEnd = { if (kotlin.math.abs(offsetX) < 20f) { } }, onHorizontalDrag = { _, drag -> if (scale <= 1.02f) offsetX += drag }) }) {
-        if (item.isVideo) AndroidView(factory = { ctx -> VideoView(ctx).also { vv -> videoView = vv; vv.setMediaController(MediaController(ctx)); vv.setVideoURI(item.uri); vv.setOnPreparedListener { it.start() } } }, modifier = Modifier.fillMaxSize(), update = { if (it.tag != item.uri) { it.tag = item.uri; it.setVideoURI(item.uri); it.start() } })
-        else AsyncImage(model = ImageRequest.Builder(context).data(item.uri).build(), contentDescription = null, modifier = Modifier.fillMaxSize().pointerInput(item.uri) { detectTransformGestures { centroid, pan, zoom, _ -> scale = (scale * zoom).coerceIn(1f, 5f); if (scale > 1f) { offsetX += pan.x; offsetY += pan.y } else { offsetX = 0f; offsetY = 0f } } }.clickable { controls = !controls }, contentScale = ContentScale.Fit, transform = {})
-        if (!item.isVideo) Box(Modifier.fillMaxSize().graphicsLayer(scaleX = scale, scaleY = scale, translationX = offsetX, translationY = offsetY))
+
+    Box(Modifier.fillMaxSize().background(Color.Black).pointerInput(index) {
+        detectHorizontalDragGestures(onDragEnd = { if (kotlin.math.abs(offsetX) > 80f) { if (offsetX < 0 && index < items.lastIndex) index++ else if (offsetX > 0 && index > 0) index--; offsetX = 0f; scale = 1f; offsetY = 0f } else offsetX = 0f }, onHorizontalDrag = { _, drag -> if (scale <= 1.02f) offsetX += drag })
+    }) {
+        if (item.isVideo) {
+            Media3VideoPlayer(item.uri, controls, onControlsToggle = { controls = !controls })
+        } else {
+            AsyncImage(model = ImageRequest.Builder(context).data(item.uri).build(), contentDescription = null, modifier = Modifier.fillMaxSize().pointerInput(item.uri) { detectTransformGestures { _, pan, zoom, _ -> scale = (scale * zoom).coerceIn(1f, 5f); if (scale > 1f) { offsetX += pan.x; offsetY += pan.y } else { offsetX = 0f; offsetY = 0f } } }.clickable { controls = !controls }.graphicsLayer(scaleX = scale, scaleY = scale, translationX = offsetX, translationY = offsetY), contentScale = ContentScale.Fit)
+        }
         if (controls) {
             Row(Modifier.fillMaxWidth().padding(16.dp).align(Alignment.TopCenter), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onDismiss, modifier = Modifier.size(46.dp).clip(CircleShape).background(Color.Black.copy(alpha = .55f))) { Icon(Icons.Default.Close, "Close", tint = Color.White) }
@@ -139,9 +146,50 @@ class MainActivity : ComponentActivity() { override fun onCreate(savedInstanceSt
     if (showInfo) AlertDialog(onDismissRequest = { showInfo = false }, title = { Text("اطلاعات فایل") }, text = { Column { Text(item.name.ifBlank { "بدون نام" }); Spacer(Modifier.height(8.dp)); Text(if (item.isVideo) "ویدئو" else "عکس"); Text("حجم: ${formatBytes(item.size)}"); Text("آلبوم: ${item.bucket}") } }, confirmButton = { TextButton(onClick = { showInfo = false }) { Text("بستن") } })
 }
 
+@Composable private fun Media3VideoPlayer(uri: Uri, controlsVisible: Boolean, onControlsToggle: () -> Unit) {
+    val context = LocalContext.current
+    val player = remember(uri) {
+        ExoPlayer.Builder(context).build().apply { setMediaItem(PlayerMediaItem.fromUri(uri)); prepare(); playWhenReady = true }
+    }
+    var playing by remember(uri) { mutableStateOf(true) }
+    var position by remember(uri) { mutableLongStateOf(0L) }
+    var duration by remember(uri) { mutableLongStateOf(0L) }
+    DisposableEffect(player) {
+        val listener = object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) { playing = isPlaying }
+            override fun onPlaybackStateChanged(state: Int) { duration = player.duration.coerceAtLeast(0L) }
+        }
+        player.addListener(listener)
+        onDispose { player.removeListener(listener); player.release() }
+    }
+    LaunchedEffect(player, playing) {
+        while (playing) { position = player.currentPosition; duration = player.duration.coerceAtLeast(0L); delay(250) }
+    }
+    Box(Modifier.fillMaxSize().clickable(onClick = onControlsToggle)) {
+        AndroidView(factory = { ctx -> PlayerView(ctx).apply { this.player = player; useController = false; layoutParams = android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT) } }, modifier = Modifier.fillMaxSize())
+        if (controlsVisible) {
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = .5f), Color.Transparent, Color.Black.copy(alpha = .72f)))) )
+            Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+                Row(horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { player.seekTo((player.currentPosition - 10_000L).coerceAtLeast(0L)) }, modifier = Modifier.size(56.dp).clip(CircleShape).background(Color.White.copy(alpha = .14f))) { Icon(Icons.Default.Replay10, "10 seconds back", tint = Color.White) }
+                    IconButton(onClick = { if (player.isPlaying) player.pause() else player.play() }, modifier = Modifier.size(78.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary)) { Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, "Play/Pause", Modifier.size(38.dp), tint = Color.White) }
+                    IconButton(onClick = { player.seekTo((player.currentPosition + 10_000L).coerceAtMost(player.duration.coerceAtLeast(0L))) }, modifier = Modifier.size(56.dp).clip(CircleShape).background(Color.White.copy(alpha = .14f))) { Icon(Icons.Default.Forward10, "10 seconds forward", tint = Color.White) }
+                }
+            }
+            Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp).navigationBarsPadding()) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(formatTime(position), color = Color.White, style = MaterialTheme.typography.labelSmall)
+                    Slider(value = if (duration > 0) position.coerceIn(0L, duration).toFloat() / duration else 0f, onValueChange = { position = (it * duration).toLong() }, onValueChangeFinished = { player.seekTo(position) }, modifier = Modifier.weight(1f).padding(horizontal = 8.dp))
+                    Text(formatTime(duration), color = Color.White, style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        }
+    }
+}
+
+private fun formatTime(ms: Long): String { val totalSeconds = (ms / 1000).coerceAtLeast(0L); return "${totalSeconds / 60}:${(totalSeconds % 60).toString().padStart(2, '0')}" }
 @Composable private fun ViewerButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, action: () -> Unit) = Column(horizontalAlignment = Alignment.CenterHorizontally) { IconButton(onClick = action, modifier = Modifier.size(48.dp).clip(CircleShape).background(Color.Black.copy(alpha = .55f))) { Icon(icon, label, tint = Color.White) }; Text(label, color = Color.White, style = MaterialTheme.typography.labelSmall) }
 @Composable private fun FloatingNav(icon: androidx.compose.ui.graphics.vector.ImageVector, modifier: Modifier, action: () -> Unit) = IconButton(onClick = action, modifier = modifier.padding(12.dp).size(48.dp).clip(CircleShape).background(Color.Black.copy(alpha = .5f))) { Icon(icon, null, tint = Color.White, modifier = Modifier.size(32.dp)) }
-
 private fun shareMedia(context: Context, uri: Uri) { context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = context.contentResolver.getType(uri) ?: "*/*"; putExtra(Intent.EXTRA_STREAM, uri); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }, "اشتراک‌گذاری")) }
 private fun updateFavorite(context: Context, item: MediaItem, favorite: Boolean) { if (Build.VERSION.SDK_INT >= 29) { val values = android.content.ContentValues().apply { put(MediaStore.MediaColumns.IS_FAVORITE, if (favorite) 1 else 0) }; runCatching { context.contentResolver.update(item.uri, values, null, null) } } }
 private fun formatBytes(bytes: Long): String { if (bytes <= 0) return "نامشخص"; val units = arrayOf("B", "KB", "MB", "GB"); var n = bytes.toDouble(); var i = 0; while (n >= 1024 && i < units.lastIndex) { n /= 1024; i++ }; return "%.1f %s".format(n, units[i]) }
@@ -151,10 +199,5 @@ private fun formatBytes(bytes: Long): String { if (bytes <= 0) return "نامش�
 
 private fun hasMediaPermission(context: Context): Boolean = if (Build.VERSION.SDK_INT >= 33) ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED && ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_VIDEO) == PackageManager.PERMISSION_GRANTED else ContextCompat.checkSelfPermission(context, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
 private fun requiredPermissions(): Array<String> = if (Build.VERSION.SDK_INT >= 33) arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO) else arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
-
-private fun loadMedia(context: Context): List<MediaItem> {
-    val result = ArrayList<MediaItem>(512); val resolver = context.contentResolver
-    fun query(uri: Uri, video: Boolean) { val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.SIZE, MediaStore.MediaColumns.DATE_ADDED, MediaStore.MediaColumns.BUCKET_DISPLAY_NAME); resolver.query(uri, projection, null, null, "${MediaStore.MediaColumns.DATE_ADDED} DESC")?.use { c -> val id=c.getColumnIndexOrThrow(MediaStore.MediaColumns._ID); val name=c.getColumnIndex(MediaStore.MediaColumns.DISPLAY_NAME); val size=c.getColumnIndex(MediaStore.MediaColumns.SIZE); val date=c.getColumnIndex(MediaStore.MediaColumns.DATE_ADDED); val bucket=c.getColumnIndex(MediaStore.MediaColumns.BUCKET_DISPLAY_NAME); while(c.moveToNext()) result += MediaItem(ContentUris.withAppendedId(uri,c.getLong(id)),video,c.getString(bucket) ?: if(video) "Videos" else "Pictures",c.getLong(date),c.getString(name) ?: "",c.getLong(size)) } }
-    query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, false); query(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true); return result.sortedByDescending { it.date }
-}
+private fun loadMedia(context: Context): List<MediaItem> { val result = ArrayList<MediaItem>(512); val resolver = context.contentResolver; fun query(uri: Uri, video: Boolean) { val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.SIZE, MediaStore.MediaColumns.DATE_ADDED, MediaStore.MediaColumns.BUCKET_DISPLAY_NAME); resolver.query(uri, projection, null, null, "${MediaStore.MediaColumns.DATE_ADDED} DESC")?.use { c -> val id=c.getColumnIndexOrThrow(MediaStore.MediaColumns._ID); val name=c.getColumnIndex(MediaStore.MediaColumns.DISPLAY_NAME); val size=c.getColumnIndex(MediaStore.MediaColumns.SIZE); val date=c.getColumnIndex(MediaStore.MediaColumns.DATE_ADDED); val bucket=c.getColumnIndex(MediaStore.MediaColumns.BUCKET_DISPLAY_NAME); while(c.moveToNext()) result += MediaItem(ContentUris.withAppendedId(uri,c.getLong(id)),video,c.getString(bucket) ?: if(video) "Videos" else "Pictures",c.getLong(date),c.getString(name) ?: "",c.getLong(size)) } }; query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, false); query(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true); return result.sortedByDescending { it.date } }
 private fun buildAlbums(media: List<MediaItem>): List<Album> = listOf(Album("All Photos", media.size, media.firstOrNull()?.uri)) + media.groupBy { it.bucket }.map { (name,list) -> Album(name,list.size,list.firstOrNull()?.uri) }.sortedBy { it.name }
