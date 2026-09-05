@@ -20,6 +20,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -104,8 +105,8 @@ private fun hasPermission(c:Context)=if(Build.VERSION.SDK_INT>=34)listOf(Manifes
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable private fun Gallery(xs:List<M>,total:Int,inAlbum:Boolean,dark:Boolean,search:String,cols:Int,sel:Set<String>,onSearch:(String)->Unit,onTheme:()->Unit,onAlbums:()->Unit,onSettings:()->Unit,onOpen:(M)->Unit,onSelect:(Uri)->Unit,onClear:()->Unit,onDelete:()->Unit,onShare:()->Unit,onColsChange:(Int)->Unit){
  var searching by remember{mutableStateOf(false)};var feed by remember{mutableStateOf(Feed.ALL)}
- val filtered=remember(xs,feed){when(feed){Feed.LATEST->xs.sortedByDescending{it.date};Feed.FAVORITES->xs.filter{it.fav};Feed.ALL->xs;Feed.VIDEOS->xs.filter{it.video};Feed.PHOTOS->xs.filterNot{it.video}}}
- val shown=filtered.filter{search.isBlank()||it.name.contains(search,true)||it.bucket.contains(search,true)}
+ val filtered=remember(xs,feed){when(feed){Feed.LATEST->xs;Feed.FAVORITES->xs.filter{it.fav};Feed.ALL->xs;Feed.VIDEOS->xs.filter{it.video};Feed.PHOTOS->xs.filterNot{it.video}}}
+ val shown=remember(filtered,search){filtered.filter{search.isBlank()||it.name.contains(search,true)||it.bucket.contains(search,true)}}
  Column(Modifier.fillMaxSize()){
   if(sel.isNotEmpty())TopAppBar(title={Text("${sel.size} انتخاب شده")},navigationIcon={IconButton(onClick=onClear){Icon(Icons.Default.Close,null)}},actions={IconButton(onClick=onShare){Icon(Icons.Default.Share,null)};IconButton(onClick=onDelete){Icon(Icons.Default.Delete,null)}})
   else if(searching)TopAppBar(title={OutlinedTextField(value=search,onValueChange=onSearch,modifier=Modifier.fillMaxWidth().padding(end=8.dp),singleLine=true,placeholder={Text("جستجو…")},leadingIcon={Icon(Icons.Default.Search,null)},trailingIcon={IconButton(onClick={searching=false;onSearch("")}){Icon(Icons.Default.Close,null)}},shape=RoundedCornerShape(18.dp))})
@@ -121,7 +122,7 @@ private fun hasPermission(c:Context)=if(Build.VERSION.SDK_INT>=34)listOf(Manifes
 @Composable private fun FeedChip(label:String,selected:Boolean,onClick:()->Unit)=FilterChip(selected=selected,onClick=onClick,label={Text(label)},modifier=Modifier.height(38.dp))
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-@Composable private fun Tile(m:M,selected:Boolean,open:(M)->Unit,pick:(Uri)->Unit){val c=LocalContext.current;Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(9.dp)).combinedClickable(onClick={open(m)},onLongClick={pick(m.uri)}).border(if(selected)3.dp else 0.dp,MaterialTheme.colorScheme.primary,RoundedCornerShape(9.dp))){AsyncImage(model=ImageRequest.Builder(c).data(m.uri).apply{if(m.video)decoderFactory(VideoFrameDecoder.Factory())}.build(),contentDescription=null,modifier=Modifier.fillMaxSize(),contentScale=ContentScale.Crop);if(m.video)Icon(Icons.Default.PlayArrow,null,Modifier.align(Alignment.BottomEnd).padding(7.dp).size(29.dp).clip(CircleShape).background(Color.Black.copy(.65f)).padding(5.dp),tint=Color.White);if(m.fav)Icon(Icons.Default.Favorite,null,Modifier.align(Alignment.TopEnd).padding(7.dp).size(18.dp),tint=Color.White);if(selected)Icon(Icons.Default.CheckCircle,null,Modifier.align(Alignment.TopStart).padding(7.dp),tint=MaterialTheme.colorScheme.primary)}}
+@Composable private fun Tile(m:M,selected:Boolean,open:(M)->Unit,pick:(Uri)->Unit){val c=LocalContext.current;val request=remember(m.uri,m.video){ImageRequest.Builder(c).data(m.uri).size(512).apply{if(m.video)decoderFactory(VideoFrameDecoder.Factory())}.build()};Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(9.dp)).combinedClickable(onClick={open(m)},onLongClick={pick(m.uri)}).border(if(selected)3.dp else 0.dp,MaterialTheme.colorScheme.primary,RoundedCornerShape(9.dp))){AsyncImage(model=request,contentDescription=null,modifier=Modifier.fillMaxSize(),contentScale=ContentScale.Crop);if(m.video)Icon(Icons.Default.PlayArrow,null,Modifier.align(Alignment.BottomEnd).padding(7.dp).size(29.dp).clip(CircleShape).background(Color.Black.copy(.65f)).padding(5.dp),tint=Color.White);if(m.fav)Icon(Icons.Default.Favorite,null,Modifier.align(Alignment.TopEnd).padding(7.dp).size(18.dp),tint=Color.White);if(selected)Icon(Icons.Default.CheckCircle,null,Modifier.align(Alignment.TopStart).padding(7.dp),tint=MaterialTheme.colorScheme.primary)}}
 
 @OptIn(ExperimentalMaterial3Api::class,androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable private fun AlbumPage(as_:List<A>,dark:Boolean,theme:()->Unit,back:()->Unit,open:(String)->Unit){Column(Modifier.fillMaxSize()){TopAppBar(title={Text("Albums")},navigationIcon={IconButton(onClick=back){Icon(Icons.Default.ArrowBack,null)}},actions={IconButton(theme){Icon(if(dark)Icons.Default.LightMode else Icons.Default.DarkMode,null)}});LazyVerticalGrid(GridCells.Fixed(2),contentPadding=PaddingValues(10.dp),horizontalArrangement=Arrangement.spacedBy(10.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){items(as_,key={it.name}){a->Card(Modifier.fillMaxWidth().aspectRatio(1.1f).clip(RoundedCornerShape(22.dp)).combinedClickable(onClick={open(a.name)},onLongClick={}),shape=RoundedCornerShape(22.dp)){Box(Modifier.fillMaxSize()){a.cover?.let{AsyncImage(it,null,Modifier.fillMaxSize(),contentScale=ContentScale.Crop)};Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent,Color.Black.copy(.8f)))));Column(Modifier.align(Alignment.BottomStart).padding(14.dp)){Text(a.name,color=Color.White);Text("${a.count} مورد",color=Color.White.copy(.8f))}}}}}}}
@@ -129,7 +130,41 @@ private fun hasPermission(c:Context)=if(Build.VERSION.SDK_INT>=34)listOf(Manifes
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable private fun Settings(cols:Int,sort:Sort,setCols:(Int)->Unit,setSort:(Sort)->Unit,close:()->Unit){ModalBottomSheet(onDismissRequest=close){Column(Modifier.padding(22.dp).padding(bottom=30.dp)){Text("تنظیمات نمایش",style=MaterialTheme.typography.headlineSmall);Spacer(Modifier.height(18.dp));Text("تعداد ستون‌ها: $cols");Slider(value=cols.toFloat(),onValueChange={setCols(it.toInt().coerceIn(2,6))},valueRange=2f..6f,steps=3);Text("مرتب‌سازی");Row(horizontalArrangement=Arrangement.spacedBy(8.dp),modifier=Modifier.padding(top=8.dp)){Sort.entries.forEach{FilterChip(selected=sort==it,onClick={setSort(it)},label={Text(when(it){Sort.NEW->"جدیدترین";Sort.OLD->"قدیمی‌ترین";Sort.NAME->"نام"})})}}}}}
 
-@Composable private fun Viewer(xs:List<M>,start:Int,close:()->Unit,del:(M)->Unit,favorite:(M,Boolean)->Unit){val c=LocalContext.current;var i by remember(start){mutableIntStateOf(start.coerceIn(0,xs.lastIndex))};var controls by remember{mutableStateOf(true)};var scale by remember{mutableFloatStateOf(1f)};var favv by remember(i){mutableStateOf(xs[i].fav)};val m=xs[i];Box(Modifier.fillMaxSize().background(Color.Black)){if(m.video)Video(m.uri,controls){controls=!controls}else AsyncImage(model=ImageRequest.Builder(c).data(m.uri).build(),contentDescription=null,modifier=Modifier.fillMaxSize().pointerInput(m.uri){detectTransformGestures{_,_,z,_->scale=(scale*z).coerceIn(1f,6f)}}.graphicsLayer(scaleX=scale,scaleY=scale),contentScale=ContentScale.Fit);if(controls){Row(Modifier.fillMaxWidth().padding(14.dp),verticalAlignment=Alignment.CenterVertically){IconButton(onClick=close,modifier=Modifier.size(46.dp).clip(CircleShape).background(Color.Black.copy(.55f))){Icon(Icons.Default.Close,null,tint=Color.White)};Spacer(Modifier.weight(1f));Text("${i+1} / ${xs.size}",color=Color.White,modifier=Modifier.background(Color.Black.copy(.55f),RoundedCornerShape(20.dp)).padding(10.dp))};Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start=18.dp,end=18.dp,top=18.dp,bottom=if(m.video)122.dp else 18.dp),horizontalArrangement=Arrangement.SpaceEvenly){VBtn(Icons.Default.Share){shareOne(c,m.uri)};VBtn(if(favv)Icons.Default.Favorite else Icons.Default.FavoriteBorder){favv=!favv;favorite(m,favv)};VBtn(Icons.Default.Info){};VBtn(Icons.Default.Delete){del(m)}};if(i>0)Nav(Icons.Default.ChevronLeft,Modifier.align(Alignment.CenterStart)){i--;scale=1f};if(i<xs.lastIndex)Nav(Icons.Default.ChevronRight,Modifier.align(Alignment.CenterEnd)){i++;scale=1f}}}}
+@Composable private fun Viewer(xs:List<M>,start:Int,close:()->Unit,del:(M)->Unit,favorite:(M,Boolean)->Unit){
+    val c=LocalContext.current
+    var i by remember(start){mutableIntStateOf(start.coerceIn(0,xs.lastIndex))}
+    var controls by remember{mutableStateOf(true)}
+    var showInfo by remember{mutableStateOf(false)}
+    var scale by remember{mutableFloatStateOf(1f)}
+    var favv by remember(i){mutableStateOf(xs[i].fav)}
+    val m=xs[i]
+    Box(Modifier.fillMaxSize().background(Color.Black).pointerInput(i,m.uri){
+        var totalDrag=0f
+        detectHorizontalDragGestures(
+            onHorizontalDrag={change,amount->change.consume();totalDrag+=amount},
+            onDragEnd={
+                if(kotlin.math.abs(totalDrag)>90f){
+                    if(totalDrag<0f&&i<xs.lastIndex)i++
+                    else if(totalDrag>0f&&i>0)i--
+                    scale=1f
+                }
+            }
+        )
+    }){
+        if(m.video) Video(m.uri,controls){controls=!controls}
+        else AsyncImage(model=ImageRequest.Builder(c).data(m.uri).build(),contentDescription=null,modifier=Modifier.fillMaxSize().pointerInput(m.uri){detectTransformGestures{_,_,z,_->scale=(scale*z).coerceIn(1f,6f)}}.graphicsLayer(scaleX=scale,scaleY=scale),contentScale=ContentScale.Fit)
+        if(controls){
+            Row(Modifier.fillMaxWidth().padding(14.dp),verticalAlignment=Alignment.CenterVertically){IconButton(onClick=close,modifier=Modifier.size(46.dp).clip(CircleShape).background(Color.Black.copy(.55f))){Icon(Icons.Default.Close,null,tint=Color.White)};Spacer(Modifier.weight(1f));Text("${i+1} / ${xs.size}",color=Color.White,modifier=Modifier.background(Color.Black.copy(.55f),RoundedCornerShape(20.dp)).padding(10.dp))}
+            Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start=18.dp,end=18.dp,top=18.dp,bottom=if(m.video)122.dp else 18.dp),horizontalArrangement=Arrangement.SpaceEvenly){VBtn(Icons.Default.Share){shareOne(c,m.uri)};VBtn(if(favv)Icons.Default.Favorite else Icons.Default.FavoriteBorder){favv=!favv;favorite(m,favv)};VBtn(Icons.Default.Info){showInfo=true};VBtn(Icons.Default.Delete){del(m)}}
+            if(i>0)Nav(Icons.Default.ChevronLeft,Modifier.align(Alignment.CenterStart)){i--;scale=1f}
+            if(i<xs.lastIndex)Nav(Icons.Default.ChevronRight,Modifier.align(Alignment.CenterEnd)){i++;scale=1f}
+        }
+        if(showInfo)AlertDialog(onDismissRequest={showInfo=false},title={Text("اطلاعات فایل")},text={Column(verticalArrangement=Arrangement.spacedBy(7.dp)){Text("نام: ${m.name}");Text("نوع: ${if(m.video)"ویدیو" else "عکس"}");Text("حجم: ${formatSize(m.size)}");Text("ابعاد: ${m.w} × ${m.h}");Text("آلبوم: ${m.bucket}")}},confirmButton={TextButton(onClick={showInfo=false}){Text("باشه")}})
+    }
+}
+
+private fun formatSize(bytes:Long):String{val b=bytes.coerceAtLeast(0);return when{b<1024->"$b B";b<1024*1024->String.format(Locale.US,"%.1f KB",b/1024.0);b<1024*1024*1024->String.format(Locale.US,"%.1f MB",b/1024.0/1024.0);else->String.format(Locale.US,"%.2f GB",b/1024.0/1024.0/1024.0)}}
+
 @Composable private fun VBtn(ic:androidx.compose.ui.graphics.vector.ImageVector,click:()->Unit){IconButton(onClick=click,modifier=Modifier.size(52.dp).clip(CircleShape).background(Color.Black.copy(.55f))){Icon(ic,null,tint=Color.White)}}
 @Composable private fun Nav(ic:androidx.compose.ui.graphics.vector.ImageVector,mod:Modifier,click:()->Unit)=IconButton(onClick=click,modifier=mod.size(55.dp).clip(CircleShape).background(Color.Black.copy(.5f))){Icon(ic,null,tint=Color.White,modifier=Modifier.size(34.dp))}
 
